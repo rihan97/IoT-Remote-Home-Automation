@@ -1,0 +1,258 @@
+#include <LiquidCrystal.h>// Library for LCD
+#include <Adafruit_VC0706.h> //Library for Camera
+#include <SPI.h> //"
+#include <SD.h> //"
+#include <SoftwareSerial.h>  //Camera Library
+
+#define chipSelect 10 //Adafruit SD shields  for storing images taken
+
+//Declaring Pins for the components and sensors
+int LDRPin = A0;  //define a pin for Photo resistor
+int TempPin = A1; // Use Pin 10 as our Input
+int ledPin = 9;
+int pirPin = 8; //Using Pin 8 for Input for the motion sensor
+const int rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
+LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
+
+
+//Variables declaration for the three sensors
+int TempValue; // variable used for the Temperature sensor
+int LDRValue;  // variable used for the LDR sensor
+int PIRValue;  //variable used for motion sensor
+
+// Variable declaration for converting that TempValue to voltage
+float voltage;// declaring a variable for converting the voltage into a temperature
+float temperatureC; //declaring a name for temperature
+
+Adafruit_VC0706 cam = Adafruit_VC0706(&Serial);
+
+void Timer (){// Method used for Timer
+ReadSensors();// used for value the sensors
+TakeActions();// used for setting what to do with the sensors
+
+Serial.println(" "); //The Timer
+  static boolean output = HIGH; 
+
+digitalWrite(ledPin, output);// declaring Led as an output
+  output = !output;
+  
+}
+
+
+
+void setup()// Main Setup For Timer
+{
+   Serial.begin(9600);
+     //Set pin 13,10,9 for output.
+     pinMode(13, OUTPUT); //led for heating
+     pinMode(10, OUTPUT); //led for water
+     pinMode(9, OUTPUT); //led for lights
+   
+     pinMode(ledPin,OUTPUT);// the output for the timer
+     pinMode(ledPin, OUTPUT);
+     pinMode(TempPin, INPUT) ; // input from the temp pin
+     pinMode(pirPin, INPUT);
+
+     
+     lcd.begin(16,2);
+     lcd.clear();
+
+  //  Motion detection system can alert you when the camera 'sees' motion!
+  cam.setMotionDetect(true);           // turn it on
+  //cam.setMotionDetect(false);        // turn it off   (default)
+
+  // You can also verify whether motion detection is active!
+  Serial.print("Motion detection is ");
+  if (cam.getMotionDetect()) 
+    Serial.println("ON");
+  else 
+    Serial.println("OFF");
+}
+    
+void loop()
+{
+
+  //////////////Code for home automation - automatic aspects of the system/////////////////    
+// if statement used for determining if it is Night and what should happen with the heating.
+if(temperatureC>15 && PIRValue==0 && LDRValue<376){ // if temperature is greater than 17Celsius and there is no motion detected and light is off then its night  //before was >400
+  lcd.clear();//Clearing whatever is on the LCD
+  lcd.print("Heating Off Night");//Displaying  to LCD
+  //Serial.println("Heating Off Night");
+  delay(3000);// Using delay
+  //test
+  digitalWrite(ledPin, HIGH);
+  delay(2000);
+  digitalWrite(ledPin, LOW);
+  delay(2000);
+}
+else if (temperatureC<=18 && PIRValue==1){//This if statement for turning the heating on.
+  lcd.clear();//Clearing whatever is on the LCD
+  lcd.print("Turn Heating On");//Displaying  to LCD
+  //Serial.println("Turn Heating On");
+  delay(3000);// Using delay
+  //test
+  digitalWrite(ledPin, HIGH);
+  delay(1250);
+  digitalWrite(ledPin, LOW);
+  delay(1250);
+}
+else if ((temperatureC>=18) && (temperatureC<=24)&& (PIRValue==1)){//if statement used for keeping the room warm
+  lcd.clear();//Clearing whatever is on the LCD
+  lcd.print("Keep Heating On");//Displaying  to LCD
+  //Serial.println("Keep Heating On");
+  delay(3000);// Using delay
+  //test
+  digitalWrite(ledPin, HIGH);
+  delay(900);
+  digitalWrite(ledPin, LOW);
+  delay(900);
+}
+else if (temperatureC>24){//If statement used for turning heating off 
+  lcd.clear();//Clearing whatever is on the LCD
+  lcd.print("Heating Off");//Displaying  to LCD
+  //Serial.println("Heating Off");
+  delay(3000);// Using delay
+  //test
+  digitalWrite(ledPin, HIGH);
+  delay(400);
+  digitalWrite(ledPin, LOW);
+  delay(400);
+}
+
+ //////////Code for remote control of system////////
+ //Assing the input value to a variable.
+  char input;
+
+  //Read in the characters being sent from Java.
+  input = Serial.read();
+
+  //Turn on the Heating led.
+  if(input == '1')
+  {
+    digitalWrite(13, HIGH);
+  }
+  
+
+  //Turn off the Heating LED.
+  if(input == '2')
+  {
+    digitalWrite(13, LOW);
+  }
+
+  //Turn on the  water system LED.
+  if(input == '3')
+  {
+    digitalWrite(10, HIGH);
+  }
+
+
+  //Turn off the Water system LED.
+  if(input == '4')
+  {
+    digitalWrite(10, LOW);
+  }
+
+  //Turn on the Lights led.
+  if(input == '5')
+  {
+    digitalWrite(9, HIGH);
+  }
+
+  //Turn off the Lights LED.
+  if(input == '6')
+  {
+    digitalWrite(9, LOW);
+  } 
+
+ 
+ ////////Code for the camera////////////
+
+if (cam.motionDetected()) {
+   Serial.println("Motion!");   
+   cam.setMotionDetect(false);
+   
+  if (! cam.takePicture()) 
+    Serial.println("Failed to snap!");
+  else 
+    Serial.println("Picture taken!");
+  
+  char filename[13];
+  strcpy(filename, "IMAGE00.JPG");
+  for (int i = 0; i < 100; i++) {
+    filename[5] = '0' + i/10;
+    filename[6] = '0' + i%10;
+    // create if does not exist, do not open existing, write, sync after write
+    if (! SD.exists(filename)) {
+      break;
+    }
+  }
+  
+  File imgFile = SD.open(filename, FILE_WRITE);
+  
+  uint16_t jpglen = cam.frameLength();
+  Serial.print(jpglen, DEC);
+  Serial.println(" byte image");
+ 
+  Serial.print("Writing image to "); Serial.print(filename);
+  
+  while (jpglen > 0) {
+    // read 32 bytes at a time;
+    uint8_t *buffer;
+    uint8_t bytesToRead = min(32, jpglen); // change 32 to 64 for a speedup but may not work with all setups!
+    buffer = cam.readPicture(bytesToRead);
+    imgFile.write(buffer, bytesToRead);
+
+    //Serial.print("Read ");  Serial.print(bytesToRead, DEC); Serial.println(" bytes");
+
+    jpglen -= bytesToRead;
+  }
+  imgFile.close();
+  Serial.println("...Done!");
+  cam.resumeVideo();
+  cam.setMotionDetect(true);
+ }
+
+}
+
+void ReadSensors()// method for reading the values of the data from sensors
+{
+  analogWrite(ledPin, analogRead(LDRPin)/2);  //send the LDRValue to the ledPin. Depending on LDRLDRValue of resistor  
+}
+
+void TakeActions()//What actions to perform on what sensors
+{
+  //LDR Printing and Take Action Code
+  LDRValue=analogRead(LDRPin);// LDR Action to take
+ // Serial.println(LDRPin);
+  if (LDRValue >35)  { //if the LDRLDRValue is greater than 400 then it prints 1 to indicate light //ORIGINALLY WAS WORKING AT 400 PERFECTLY//
+  //370
+   Serial.print("1");
+   Serial.print(","); 
+   }
+   else {// prints 0 to say there is No light
+   Serial.print("0");
+   Serial.print(",");
+         }
+         
+ //Temperature Printing and Take Action Code        
+ TempValue = analogRead(TempPin); 
+ voltage = TempValue * 5.0; //Converting the reading to a voltage
+ voltage /= 1024.0; 
+
+temperatureC = (voltage - 0.5) * 100 ;  //converting the voltage into Celsius from 
+//from 10 mv per degree wit 500 mV offset to degrees ((voltage - 500mV) times 100)
+Serial.print(temperatureC); //printing the  temperature in Celsius
+Serial.print(",");
+
+// PIR Motion Printing and take action code
+PIRValue = digitalRead(pirPin);// using the pir pin assigned above to read the data
+
+if (PIRValue == 1) {// If the value is high then print 1         
+  Serial.print("1");// 1 means motion detected
+  Serial.print(","); 
+    }
+else{ 
+  Serial.print("0"); // 0 means no motion detected
+}
+}
+
